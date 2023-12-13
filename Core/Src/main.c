@@ -76,12 +76,16 @@ static void MX_I2C1_Init(void);
 
 #define DRIVER_MOVE_ID 0x01
 #define DRIVER_LIFT_ID 0x02
+#define MOTOR_SPEED 2000
+#define MOTOR_SPEED_ROTATE 2000
 uint8_t uart_buff[100];
 uint8_t new_data = 0;
 uint16_t data_size = 0;
 
+int32_t manual_mode = 0;
 int32_t start_stop = 0;
-int32_t motor_speed = 0;
+int32_t motor_speed_left = 0;
+int32_t motor_speed_right = 0;
 
 CAN_TxHeaderTypeDef TxHeader;
 CAN_RxHeaderTypeDef RxHeader;
@@ -239,7 +243,7 @@ void Moving() {
 			canDataSend.canData[1] = 0x00;
 			canDataSend.canData[2] = 0x20;
 			canDataSend.canData[3] = 0x01;
-			ch_velocity = motor_speed;
+			ch_velocity = motor_speed_left;
 			canDataSend.canData[4] = ch_velocity >> 24;
 			canDataSend.canData[5] = ch_velocity >> 16;
 			canDataSend.canData[6] = ch_velocity >> 8;
@@ -252,7 +256,7 @@ void Moving() {
 			canDataSend.canData[1] = 0x00;
 			canDataSend.canData[2] = 0x20;
 			canDataSend.canData[3] = 0x02;
-			ch_velocity = motor_speed;
+			ch_velocity = motor_speed_right;
 			canDataSend.canData[4] = ch_velocity >> 24;
 			canDataSend.canData[5] = ch_velocity >> 16;
 			canDataSend.canData[6] = ch_velocity >> 8;
@@ -284,7 +288,7 @@ void Moving() {
 			move_axis_en = 0;
 			lift_axis_en = 0;
 		}
-		HAL_Delay(20);
+		HAL_Delay(5);
 }
 
 void read_uart() {
@@ -297,13 +301,92 @@ void read_uart() {
 
 void logic()
 {
+	static uint32_t ultra_forw_trig = 0;
+	static uint32_t ultra_back_trig = 0;
+	static uint32_t logic_state = 0;
+	static float yaw_sv = 0;
 	if (start_stop)
 	{
+		if (!ULTRA_FORW) //npn sensor
+		{
+//			HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+			ultra_forw_trig = 1;
+		}
+		if (!ULTRA_BACK) //npn sensor
+		{
+			ultra_back_trig = 1;
+//			HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+		}
+//		if (ULTRA_FORW && ULTRA_BACK)
+//		{
+//			HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
+//		}
+		if (logic_state == 0)
+		{
+			yaw_sv = yaw_inside;
+			logic_state++;
+		}
+		else if (logic_state == 1)
+		{
+			if (ultra_forw_trig)
+			{
+				motor_speed_left = MOTOR_SPEED_ROTATE;
+				motor_speed_right = MOTOR_SPEED_ROTATE;
+				logic_state++;
+			}
+			else if (ultra_back_trig)
+			{
+				motor_speed_left = -MOTOR_SPEED_ROTATE;
+				motor_speed_right = -MOTOR_SPEED_ROTATE;
+				logic_state++;
+			}
+			else
+			{
+				logic_state = 3;
+			}
 
+		}
+		else if (logic_state == 2)
+		{
+			float yaw_tmp = abs(yaw_sv - yaw_inside);
+			ultra_forw_trig = 0;
+			ultra_back_trig = 0;
+			if (yaw_tmp > 90)
+			{
+				logic_state = 3;
+			}
+		}
+		else if (logic_state == 3)
+		{
+			uint32_t randm = rand()%10;
+			if (randm > 5)
+			{
+				motor_speed_left = MOTOR_SPEED;
+				motor_speed_right = -MOTOR_SPEED;
+			}
+			else
+			{
+				motor_speed_left = -MOTOR_SPEED;
+				motor_speed_right = MOTOR_SPEED;
+			}
+			logic_state++;
+		}
+		else if (logic_state == 4)
+		{
+			if (ultra_forw_trig || ultra_back_trig)
+			{
+				logic_state = 0;
+			}
+		}
 	}
 	else
 	{
-		motor_speed = 0;
+		logic_state = 0;
+		if (!manual_mode)
+		{
+			motor_speed_left = 0;
+			motor_speed_right = 0;
+		}
 	}
 }
 /* USER CODE END 0 */
@@ -352,6 +435,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  HAL_Delay(1500);
   HAL_UART_Transmit(&huart1, (uint8_t*)"Start\r\n", 7, HAL_MAX_DELAY);
   if (MPU9250_begin() != INV_SUCCESS)
   {
@@ -372,7 +456,8 @@ int main(void)
 
 
   MPU9250_dmpBegin(DMP_FEATURE_6X_LP_QUAT | DMP_FEATURE_GYRO_CAL, 10);
-  //uint32_t time_u = 0;
+  uint32_t time_u = 0;
+  start_stop = 1; ///////////FOR TEST
   while (1)
   {
 
@@ -391,15 +476,15 @@ int main(void)
 
 	  //HAL_Delay(100);
 
-//	  if((HAL_GetTick() - time_u) > 1000)
-//	  {
-////		  snprintf(buff, 20, "%2.2f | %2.2f | %2.2f\r\n", roll, pitch, yaw);
-//		  sprintf(buff, "%d.%d | %d.%d | %d.%d\r\n", roll/10, rollDecimal, pitch/10, pitchDecimal, yaw/10, yawDecimal);
-//	  	  HAL_UART_Transmit(&huart1, (uint8_t*)buff, strlen(buff), HAL_MAX_DELAY);
-//	  	  time_u = HAL_GetTick();
-//	  }
-//	  HAL_Delay(10);
-//
+	  if((HAL_GetTick() - time_u) > 1000)
+	  {
+		  snprintf(buff, sizeof buff, "%2.2f | %2.2f | %2.2f\r\n", roll_inside, pitch_inside, yaw_inside);
+		  //sprintf(buff, "%d.%d | %d.%d | %d.%d\r\n", roll/10, rollDecimal, pitch/10, pitchDecimal, yaw/10, yawDecimal);
+	  	  HAL_UART_Transmit(&huart1, (uint8_t*)buff, strlen(buff), HAL_MAX_DELAY);
+	  	  time_u = HAL_GetTick();
+	  }
+	  //HAL_Delay(10);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
