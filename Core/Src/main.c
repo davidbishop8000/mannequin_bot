@@ -76,8 +76,20 @@ static void MX_I2C1_Init(void);
 
 #define DRIVER_MOVE_ID 0x01
 #define DRIVER_LIFT_ID 0x02
-#define MOTOR_SPEED 2000
-#define MOTOR_SPEED_ROTATE 2000
+#define MOTOR_SPEED 800
+#define MOTOR_SPEED_ROTATE 800
+#define ANGL_ROT 30
+
+int32_t status_move = 0;
+
+enum StatMove {
+	STAT_MOVE_STOP = 0,
+	STAT_MOVE_FORW,
+	STAT_MOVE_BACK,
+	STAT_MOVE_ROT_R,
+	STAT_MOVE_ROT_L
+};
+
 uint8_t uart_buff[100];
 uint8_t new_data = 0;
 uint16_t data_size = 0;
@@ -307,12 +319,12 @@ void logic()
 	static float yaw_sv = 0;
 	if (start_stop)
 	{
-		if (!ULTRA_FORW) //npn sensor
+		if (!ULTRA_FORW && status_move == STAT_MOVE_FORW) //npn sensor
 		{
 //			HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
 			ultra_forw_trig = 1;
 		}
-		if (!ULTRA_BACK) //npn sensor
+		if (!ULTRA_BACK && status_move == STAT_MOVE_BACK) //npn sensor
 		{
 			ultra_back_trig = 1;
 //			HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
@@ -328,16 +340,22 @@ void logic()
 		}
 		else if (logic_state == 1)
 		{
-			if (ultra_forw_trig)
+
+			if (ultra_forw_trig || ultra_back_trig)
 			{
-				motor_speed_left = MOTOR_SPEED_ROTATE;
-				motor_speed_right = MOTOR_SPEED_ROTATE;
-				logic_state++;
-			}
-			else if (ultra_back_trig)
-			{
-				motor_speed_left = -MOTOR_SPEED_ROTATE;
-				motor_speed_right = -MOTOR_SPEED_ROTATE;
+				uint32_t randm = rand()%10;
+				if (randm > 5)
+				{
+					motor_speed_left = MOTOR_SPEED_ROTATE;
+					motor_speed_right = MOTOR_SPEED_ROTATE;
+					status_move = STAT_MOVE_ROT_R;
+				}
+				else
+				{
+					motor_speed_left = -MOTOR_SPEED_ROTATE;
+					motor_speed_right = -MOTOR_SPEED_ROTATE;
+					status_move = STAT_MOVE_ROT_L;
+				}
 				logic_state++;
 			}
 			else
@@ -349,26 +367,27 @@ void logic()
 		else if (logic_state == 2)
 		{
 			float yaw_tmp = abs(yaw_sv - yaw_inside);
-			ultra_forw_trig = 0;
-			ultra_back_trig = 0;
-			if (yaw_tmp > 90)
+			if (yaw_tmp > ANGL_ROT)
 			{
 				logic_state = 3;
 			}
 		}
 		else if (logic_state == 3)
 		{
-			uint32_t randm = rand()%10;
-			if (randm > 5)
+			if (ultra_back_trig)
 			{
 				motor_speed_left = MOTOR_SPEED;
 				motor_speed_right = -MOTOR_SPEED;
+				status_move = STAT_MOVE_FORW;
 			}
 			else
 			{
 				motor_speed_left = -MOTOR_SPEED;
 				motor_speed_right = MOTOR_SPEED;
+				status_move = STAT_MOVE_BACK;
 			}
+			ultra_forw_trig = 0;
+			ultra_back_trig = 0;
 			logic_state++;
 		}
 		else if (logic_state == 4)
@@ -386,6 +405,7 @@ void logic()
 		{
 			motor_speed_left = 0;
 			motor_speed_right = 0;
+			status_move = STAT_MOVE_STOP;
 		}
 	}
 }
@@ -454,7 +474,7 @@ int main(void)
   }
 
 
-
+  MPU9250_setSampleRate(1000);
   MPU9250_dmpBegin(DMP_FEATURE_6X_LP_QUAT | DMP_FEATURE_GYRO_CAL, 10);
   uint32_t time_u = 0;
   start_stop = 1; ///////////FOR TEST
@@ -476,7 +496,7 @@ int main(void)
 
 	  //HAL_Delay(100);
 
-	  if((HAL_GetTick() - time_u) > 1000)
+	  if((HAL_GetTick() - time_u) > 100)
 	  {
 		  snprintf(buff, sizeof buff, "%2.2f | %2.2f | %2.2f\r\n", roll_inside, pitch_inside, yaw_inside);
 		  //sprintf(buff, "%d.%d | %d.%d | %d.%d\r\n", roll/10, rollDecimal, pitch/10, pitchDecimal, yaw/10, yawDecimal);
