@@ -457,6 +457,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   HAL_Delay(1500);
   HAL_UART_Transmit(&huart1, (uint8_t*)"Start\r\n", 7, HAL_MAX_DELAY);
+  HAL_Delay(1500);
   if (MPU9250_begin() != INV_SUCCESS)
   {
 	  while(1)
@@ -474,13 +475,17 @@ int main(void)
   }
 
 
-  MPU9250_setSampleRate(1000);
-  MPU9250_dmpBegin(DMP_FEATURE_6X_LP_QUAT | DMP_FEATURE_GYRO_CAL, 10);
+//  MPU9250_setSensors(INV_XYZ_GYRO | INV_XYZ_ACCEL);
+//  MPU9250_setGyroFSR(2000);
+//  MPU9250_setAccelFSR(16);
+//  MPU9250_setSampleRate(1000);
+//  //MPU9250_setCompassSampleRate(100);
+  MPU9250_dmpBegin(DMP_FEATURE_6X_LP_QUAT | DMP_FEATURE_GYRO_CAL, 20);
   uint32_t time_u = 0;
   start_stop = 1; ///////////FOR TEST
   while (1)
   {
-
+	  //MPU9250_update(UPDATE_ACCEL | UPDATE_GYRO | UPDATE_COMPASS);
 	  if(MPU9250_fifoAvailable())
 	  {
 		  if (MPU9250_dmpUpdateFifo() == INV_SUCCESS)
@@ -496,13 +501,13 @@ int main(void)
 
 	  //HAL_Delay(100);
 
-	  if((HAL_GetTick() - time_u) > 100)
-	  {
-		  snprintf(buff, sizeof buff, "%2.2f | %2.2f | %2.2f\r\n", roll_inside, pitch_inside, yaw_inside);
-		  //sprintf(buff, "%d.%d | %d.%d | %d.%d\r\n", roll/10, rollDecimal, pitch/10, pitchDecimal, yaw/10, yawDecimal);
-	  	  HAL_UART_Transmit(&huart1, (uint8_t*)buff, strlen(buff), HAL_MAX_DELAY);
-	  	  time_u = HAL_GetTick();
-	  }
+//	  if((HAL_GetTick() - time_u) > 10)
+//	  {
+//		  snprintf(buff, sizeof buff, "%2.2f | %2.2f | %2.2f\r\n", roll_inside, pitch_inside, yaw_inside);
+//		  //sprintf(buff, "%d.%d | %d.%d | %d.%d\r\n", roll/10, rollDecimal, pitch/10, pitchDecimal, yaw/10, yawDecimal);
+//	  	  HAL_UART_Transmit(&huart1, (uint8_t*)buff, strlen(buff), HAL_MAX_DELAY);
+//	  	  time_u = HAL_GetTick();
+//	  }
 	  //HAL_Delay(10);
 
     /* USER CODE END WHILE */
@@ -626,7 +631,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.ClockSpeed = 400000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
